@@ -6,6 +6,7 @@ import (
 
 	"edge-cli/config"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -62,58 +63,20 @@ func readParentSystemKeyFromTOML(path string) (string, error) {
 		return "", err
 	}
 
-	for _, line := range splitLines(string(data)) {
-		key, val, ok := parseKV(line)
-		if ok && key == "ParentSystemKey" && val != "" {
-			return val, nil
-		}
+	var cfg map[string]any
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return "", fmt.Errorf("failed to parse %s: %w", path, err)
 	}
-	return "", fmt.Errorf("ParentSystemKey not found in %s", path)
-}
 
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			line := s[start:i]
-			if len(line) > 0 && line[len(line)-1] == '\r' {
-				line = line[:len(line)-1]
-			}
-			lines = append(lines, line)
-			start = i + 1
-		}
+	val, ok := cfg["ParentSystemKey"]
+	if !ok {
+		return "", fmt.Errorf("ParentSystemKey not found in %s", path)
 	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
-}
 
-// parseKV parses a line of the form: Key = "value" or Key = value
-func parseKV(line string) (key, val string, ok bool) {
-	for i := 0; i < len(line); i++ {
-		if line[i] == '=' {
-			key = trimSpace(line[:i])
-			rest := trimSpace(line[i+1:])
-			if len(rest) >= 2 && rest[0] == '"' && rest[len(rest)-1] == '"' {
-				val = rest[1 : len(rest)-1]
-			} else {
-				val = rest
-			}
-			return key, val, true
-		}
+	sk, ok := val.(string)
+	if !ok || sk == "" {
+		return "", fmt.Errorf("ParentSystemKey is empty in %s", path)
 	}
-	return "", "", false
-}
 
-func trimSpace(s string) string {
-	start, end := 0, len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
-		end--
-	}
-	return s[start:end]
+	return sk, nil
 }

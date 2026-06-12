@@ -12,7 +12,7 @@ type DBCodeMeta struct {
 	LogTTLMinutes    int      `json:"log_ttl_minutes"`
 	RunOnPlatform    bool     `json:"run_on_platform"`
 	RunOnEdge        bool     `json:"run_on_edge"`
-	EngineType       string   `json:"engine_type"`
+	EngineType       int      `json:"engine_type"`
 	AutoScale        bool     `json:"auto_scale"`
 	LogLevel         string   `json:"log_level"`
 	Topics           []string `json:"topics"`
@@ -43,7 +43,7 @@ type RunningServiceInfo struct {
 	Node           string         `json:"Node"`
 	NodeId         string         `json:"NodeId"`
 	IsTerminating  bool           `json:"IsTerminating"`
-	EngineType     string         `json:"EngineType"`
+	EngineType     int            `json:"EngineType"`
 	HeapStatistics HeapStatistics `json:"HeapStatistics"`
 }
 

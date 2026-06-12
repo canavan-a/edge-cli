@@ -59,7 +59,7 @@ var servicesShowCmd = &cobra.Command{
 		// Metadata section
 		fmt.Printf("Service:      %s\n", svc.Name)
 		fmt.Printf("  System Key:   %s\n", svc.SystemKey)
-		fmt.Printf("  Engine:       %s\n", svc.EngineType)
+		fmt.Printf("  Engine:       %s\n", formatEngine(svc.EngineType))
 		fmt.Printf("  Timeout:      %s\n", formatTimeout(svc.ExecutionTimeout))
 		fmt.Printf("  Concurrency:  %d\n", svc.Concurrency)
 		loggingStr := formatBool(svc.LoggingEnabled)

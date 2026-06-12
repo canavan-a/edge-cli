@@ -57,21 +57,14 @@ func resolveSystemKey(edgeConfigPath string) (string, error) {
 }
 
 func readParentSystemKeyFromTOML(path string) (string, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
-	// Simple line scan: look for ParentSystemKey = "..."
-	// Avoids pulling in a TOML dependency just for one field.
-	import_buf := make([]byte, 4096)
-	n, _ := f.Read(import_buf)
-	content := string(import_buf[:n])
-
-	for _, line := range splitLines(content) {
+	for _, line := range splitLines(string(data)) {
 		key, val, ok := parseKV(line)
-		if ok && key == "ParentSystemKey" {
+		if ok && key == "ParentSystemKey" && val != "" {
 			return val, nil
 		}
 	}
@@ -83,7 +76,11 @@ func splitLines(s string) []string {
 	start := 0
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
+			line := s[start:i]
+			if len(line) > 0 && line[len(line)-1] == '\r' {
+				line = line[:len(line)-1]
+			}
+			lines = append(lines, line)
 			start = i + 1
 		}
 	}

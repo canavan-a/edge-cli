@@ -88,28 +88,31 @@ func Authenticate(baseURL, email, password string) (string, error) {
 
 // ListServices returns all deployed service metadata for the system.
 func (c *Client) ListServices() ([]models.DBCodeMeta, error) {
-	data, err := c.do("GET", "/codeadmin/v/2/"+c.systemKey, nil)
+	data, err := c.do("GET", "/codeadmin/v/2/codemeta/"+c.systemKey, nil)
 	if err != nil {
 		return nil, err
 	}
-	var services []models.DBCodeMeta
-	if err := json.Unmarshal(data, &services); err != nil {
+	var resp struct {
+		Code []models.DBCodeMeta `json:"code"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, err
 	}
-	return services, nil
+	return resp.Code, nil
 }
 
 // GetService returns metadata for a single service by name.
 func (c *Client) GetService(name string) (*models.DBCodeMeta, error) {
-	data, err := c.do("GET", "/codeadmin/v/2/"+c.systemKey+"/"+name, nil)
+	services, err := c.ListServices()
 	if err != nil {
 		return nil, err
 	}
-	var svc models.DBCodeMeta
-	if err := json.Unmarshal(data, &svc); err != nil {
-		return nil, err
+	for _, svc := range services {
+		if svc.Name == name {
+			return &svc, nil
+		}
 	}
-	return &svc, nil
+	return nil, fmt.Errorf("service %q not found", name)
 }
 
 // ListRunning returns all currently running service instances for the system.

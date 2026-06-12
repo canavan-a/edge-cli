@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 
 	"github.com/spf13/cobra"
@@ -46,6 +48,7 @@ var upgradeCmd = &cobra.Command{
 			return fmt.Errorf("could not determine current executable path: %w", err)
 		}
 
+		// Download to a temp file in /tmp.
 		tmp, err := os.CreateTemp("", "edge-cli-upgrade-*")
 		if err != nil {
 			return err
@@ -75,16 +78,58 @@ var upgradeCmd = &cobra.Command{
 			return err
 		}
 
-		if err := os.Rename(tmpPath, self); err != nil {
-			// Rename across filesystems fails; fall back to copy + replace.
-			if err2 := replaceSelf(tmpPath, self); err2 != nil {
-				return fmt.Errorf("failed to replace binary: %w (rename: %v)", err2, err)
+		// Try a direct move first. If permission is denied, retry with sudo.
+		if err := moveFile(tmpPath, self); err != nil {
+			fmt.Println("Root access required to replace binary, trying sudo...")
+			if sudoErr := sudoMove(tmpPath, self); sudoErr != nil {
+				return fmt.Errorf("failed to replace binary: %w", sudoErr)
 			}
 		}
 
 		fmt.Printf("Upgraded to %s.\n", latest)
 		return nil
 	},
+}
+
+// moveFile moves src to dst within the same filesystem using rename,
+// or falls back to a copy+rename using a temp file in the same directory as dst.
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	// Cross-device: write a temp file beside the destination, then rename.
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, "edge-cli-replace-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+
+	in, err := os.Open(src)
+	if err != nil {
+		tmp.Close()
+		return err
+	}
+	defer in.Close()
+
+	if _, err := io.Copy(tmp, in); err != nil {
+		tmp.Close()
+		return err
+	}
+	tmp.Close()
+
+	if err := os.Chmod(tmp.Name(), 0755); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), dst)
+}
+
+func sudoMove(src, dst string) error {
+	out, err := exec.Command("sudo", "mv", src, dst).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, string(out))
+	}
+	return exec.Command("sudo", "chmod", "+x", dst).Run()
 }
 
 func fetchLatestTag() (string, error) {
@@ -121,33 +166,6 @@ func platformSuffix() (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
 	}
-}
-
-// replaceSelf copies src over dst when os.Rename fails (cross-device).
-func replaceSelf(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	// Write to a sibling temp file next to the binary, then rename.
-	tmp, err := os.CreateTemp(fmt.Sprintf("%s/..", dst), "edge-cli-replace-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-
-	if _, err := io.Copy(tmp, in); err != nil {
-		tmp.Close()
-		return err
-	}
-	tmp.Close()
-
-	if err := os.Chmod(tmp.Name(), 0755); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), dst)
 }
 
 func init() {

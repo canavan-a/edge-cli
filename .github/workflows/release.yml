@@ -42,7 +42,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           go build \
-            -ldflags "-X main.version=${{ github.ref_name }}" \
+            -ldflags "-X 'edge-cli/cmd.version=${{ github.ref_name }}' -X 'edge-cli/cmd.repo=${{ github.repository }}'" \
             -o dist/edge-cli-${{ matrix.suffix }} \
             .
 
@@ -57,13 +57,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
+      - name: Generate install.sh
+        run: |
+          sed 's|{{REPO}}|${{ github.repository }}|g' scripts/install.sh.tmpl > dist/install.sh
+          chmod +x dist/install.sh
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/edge-cli-linux-amd64
+            dist/edge-cli-linux-arm64
+            dist/edge-cli-linux-armv7
+            dist/install.sh
           generate_release_notes: true

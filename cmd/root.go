@@ -68,12 +68,13 @@ func readParentSystemKeyFromTOML(path string) (string, error) {
 		return "", fmt.Errorf("failed to parse %s: %w", path, err)
 	}
 
-	val, ok := cfg["ParentSystemKey"]
+	// ParentSystemKey is nested under [Edge]
+	edge, ok := cfg["Edge"].(map[string]any)
 	if !ok {
-		return "", fmt.Errorf("ParentSystemKey not found in %s", path)
+		return "", fmt.Errorf("no [Edge] section found in %s", path)
 	}
 
-	sk, ok := val.(string)
+	sk, ok := edge["ParentSystemKey"].(string)
 	if !ok || sk == "" {
 		return "", fmt.Errorf("ParentSystemKey is empty in %s", path)
 	}

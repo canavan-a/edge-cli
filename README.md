@@ -77,6 +77,32 @@ edge-cli services show <service-name>
 
 Displays service configuration and all currently running instances with uptime and memory usage.
 
+### Start a service
+
+```sh
+edge-cli services start <service-name>
+```
+
+Pass optional params as JSON:
+
+```sh
+edge-cli services start <service-name> --params '{"key":"value"}'
+```
+
+### Stop a service
+
+Stop all running instances:
+
+```sh
+edge-cli services stop <service-name>
+```
+
+Stop a specific instance:
+
+```sh
+edge-cli services stop <service-name> --instance <instance-id>
+```
+
 ### View logs
 
 ```sh

@@ -138,6 +138,22 @@ func (c *Client) GetLogs(serviceName string) ([]models.LegacyLogUnit, error) {
 	return logs, nil
 }
 
+// StopInstance kills a specific running service instance by its request ID.
+func (c *Client) StopInstance(instanceID string, timeoutSeconds int) error {
+	body := map[string]any{"id": instanceID, "timeout": timeoutSeconds}
+	_, err := c.do("DELETE", "/codeadmin/v/3/running/"+c.systemKey, body)
+	return err
+}
+
+// StartService triggers execution of a service by name with optional params.
+func (c *Client) StartService(name string, params map[string]any) error {
+	if params == nil {
+		params = map[string]any{}
+	}
+	_, err := c.do("POST", "/api/v/1/code/"+c.systemKey+"/"+name, params)
+	return err
+}
+
 // GetLogByID returns the log for a specific service run.
 func (c *Client) GetLogByID(serviceName, logID string) (*models.LegacyLogUnit, error) {
 	data, err := c.do("GET", "/codeadmin/v/2/logs/"+c.systemKey+"/"+serviceName+"/"+logID, nil)

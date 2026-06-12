@@ -64,7 +64,7 @@ func Authenticate(baseURL, email, password string) (string, error) {
 	payload := map[string]string{"email": email, "password": password}
 	b, _ := json.Marshal(payload)
 
-	resp, err := http.Post(baseURL+"/api/v/1/authenticate", "application/json", bytes.NewReader(b))
+	resp, err := http.Post(baseURL+"/admin/auth", "application/json", bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}

@@ -71,7 +71,7 @@ var servicesListCmd = &cobra.Command{
 				rows = append(rows, row{
 					Name:      svc.Name,
 					Instances: instanceCount[svc.Name],
-					Engine:    svc.EngineType,
+					Engine:    formatEngine(svc.EngineType),
 					Timeout:   formatTimeout(svc.ExecutionTimeout),
 					Logging:   formatBool(svc.LoggingEnabled),
 				})
@@ -87,7 +87,7 @@ var servicesListCmd = &cobra.Command{
 			fmt.Fprintf(w, "%s\t%d\t%s\t%s\t%s\n",
 				svc.Name,
 				instanceCount[svc.Name],
-				svc.EngineType,
+				formatEngine(svc.EngineType),
 				formatTimeout(svc.ExecutionTimeout),
 				formatBool(svc.LoggingEnabled),
 			)
@@ -107,6 +107,17 @@ func formatTimeout(t int) string {
 		return "never"
 	}
 	return fmt.Sprintf("%ds", t)
+}
+
+func formatEngine(e int) string {
+	switch e {
+	case 0:
+		return "duk"
+	case 1:
+		return "v8"
+	default:
+		return fmt.Sprintf("unknown(%d)", e)
+	}
 }
 
 func formatBool(b bool) string {

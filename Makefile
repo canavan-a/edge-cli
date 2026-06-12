@@ -1,6 +1,6 @@
 BIN := edge-cli
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+LDFLAGS := -ldflags "-X 'edge-cli/cmd.version=$(VERSION)' -X 'edge-cli/cmd.repo=canavan-a/edge-cli'"
 
 .PHONY: build build-all install clean
 

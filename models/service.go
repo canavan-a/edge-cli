@@ -1,0 +1,56 @@
+package models
+
+// DBCodeMeta mirrors the platform's service metadata response.
+type DBCodeMeta struct {
+	Uuid             string   `json:"uuid"`
+	SystemKey        string   `json:"system_key"`
+	Name             string   `json:"name"`
+	Version          int      `json:"version"`
+	ExecutionTimeout int      `json:"execution_timeout"`
+	Concurrency      int      `json:"concurrency"`
+	LoggingEnabled   bool     `json:"logging_enabled"`
+	LogTTLMinutes    int      `json:"log_ttl_minutes"`
+	RunOnPlatform    bool     `json:"run_on_platform"`
+	RunOnEdge        bool     `json:"run_on_edge"`
+	EngineType       string   `json:"engine_type"`
+	AutoScale        bool     `json:"auto_scale"`
+	LogLevel         string   `json:"log_level"`
+	Topics           []string `json:"topics"`
+}
+
+// HeapStatistics mirrors ServiceHeapStatistics.
+type HeapStatistics struct {
+	GoHeap HeapDetail `json:"go_heap"`
+	JsHeap HeapDetail `json:"js_heap"`
+	Error  string     `json:"error,omitempty"`
+}
+
+type HeapDetail struct {
+	CurrentBytesAllocated uint64 `json:"CurrentBytesAllocated"`
+	CurrentBytesOverhead  uint64 `json:"CurrentBytesOverhead"`
+}
+
+func (h *HeapStatistics) TotalBytesAllocated() uint64 {
+	return h.GoHeap.CurrentBytesAllocated + h.JsHeap.CurrentBytesAllocated
+}
+
+// RunningServiceInfo mirrors the platform's running service response.
+type RunningServiceInfo struct {
+	ExecutingAs    string         `json:"ExecutingAs"`
+	Started        int64          `json:"Started"`
+	SystemKey      string         `json:"SystemKey"`
+	CodeName       string         `json:"CodeName"`
+	Node           string         `json:"Node"`
+	NodeId         string         `json:"NodeId"`
+	IsTerminating  bool           `json:"IsTerminating"`
+	EngineType     string         `json:"EngineType"`
+	HeapStatistics HeapStatistics `json:"HeapStatistics"`
+}
+
+// LegacyLogUnit mirrors the platform's log response.
+type LegacyLogUnit struct {
+	ID        string `json:"id"`
+	Log       string `json:"log"`
+	Time      string `json:"service_execution_time"`
+	ServiceId string `json:"service_instance_id"`
+}

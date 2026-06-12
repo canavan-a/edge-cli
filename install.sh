@@ -1,0 +1,61 @@
+#!/bin/sh
+set -e
+
+REPO="canavan-a/edge-cli"
+BIN="edge-cli"
+INSTALL_DIR="/usr/local/bin"
+
+# Detect architecture
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64)           SUFFIX="linux-amd64" ;;
+  aarch64|arm64)    SUFFIX="linux-arm64" ;;
+  armv7l|armv6l)    SUFFIX="linux-armv7" ;;
+  *)
+    echo "Unsupported architecture: $ARCH" >&2
+    exit 1
+    ;;
+esac
+
+# Resolve version
+if [ -z "$VERSION" ]; then
+  echo "Fetching latest release..."
+  VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+    | grep '"tag_name"' \
+    | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+fi
+
+if [ -z "$VERSION" ]; then
+  echo "Could not determine latest version. Set VERSION env var to install a specific release." >&2
+  exit 1
+fi
+
+URL="https://github.com/${REPO}/releases/download/${VERSION}/${BIN}-${SUFFIX}"
+
+echo "Installing ${BIN} ${VERSION} (${SUFFIX})..."
+
+# Download to a temp file then move into place
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL "$URL" -o "$TMP"
+elif command -v wget >/dev/null 2>&1; then
+  wget -qO "$TMP" "$URL"
+else
+  echo "curl or wget is required" >&2
+  exit 1
+fi
+
+chmod +x "$TMP"
+
+# Use sudo if we don't own the install dir
+if [ -w "$INSTALL_DIR" ]; then
+  mv "$TMP" "${INSTALL_DIR}/${BIN}"
+else
+  echo "Root access required to write to ${INSTALL_DIR}"
+  sudo mv "$TMP" "${INSTALL_DIR}/${BIN}"
+fi
+
+echo "Installed to ${INSTALL_DIR}/${BIN}"
+echo "Run: ${BIN} --help"

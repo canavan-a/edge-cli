@@ -13,6 +13,36 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type progressReader struct {
+	r         io.Reader
+	total     int64
+	written   int64
+}
+
+func (p *progressReader) Read(buf []byte) (int, error) {
+	n, err := p.r.Read(buf)
+	p.written += int64(n)
+	if p.total > 0 {
+		pct := float64(p.written) / float64(p.total) * 100
+		fmt.Printf("\r  downloading… %s / %s (%.0f%%)",
+			formatSize(p.written), formatSize(p.total), pct)
+	} else {
+		fmt.Printf("\r  downloading… %s", formatSize(p.written))
+	}
+	return n, err
+}
+
+func formatSize(b int64) string {
+	switch {
+	case b >= 1024*1024:
+		return fmt.Sprintf("%.1f MB", float64(b)/1024/1024)
+	case b >= 1024:
+		return fmt.Sprintf("%.1f KB", float64(b)/1024)
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
 var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
 	Short: "Upgrade edge-cli to the latest release from GitHub",
@@ -68,10 +98,13 @@ var upgradeCmd = &cobra.Command{
 			return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 		}
 
-		if _, err := io.Copy(tmp, resp.Body); err != nil {
+		pr := &progressReader{r: resp.Body, total: resp.ContentLength}
+		if _, err := io.Copy(tmp, pr); err != nil {
 			tmp.Close()
+			fmt.Println()
 			return fmt.Errorf("failed to write download: %w", err)
 		}
+		fmt.Println() // end progress line
 		tmp.Close()
 
 		if err := os.Chmod(tmpPath, 0755); err != nil {

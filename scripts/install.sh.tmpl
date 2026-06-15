@@ -39,9 +39,9 @@ TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
 
 if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$URL" -o "$TMP"
+  curl -fL --progress-bar "$URL" -o "$TMP"
 elif command -v wget >/dev/null 2>&1; then
-  wget -qO "$TMP" "$URL"
+  wget --show-progress -qO "$TMP" "$URL"
 else
   echo "curl or wget is required" >&2
   exit 1

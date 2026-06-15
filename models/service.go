@@ -2,20 +2,23 @@ package models
 
 // DBCodeMeta mirrors the platform's service metadata response.
 type DBCodeMeta struct {
-	Uuid             string   `json:"uuid"`
-	SystemKey        string   `json:"system_key"`
-	Name             string   `json:"name"`
-	Version          int      `json:"version"`
-	ExecutionTimeout int      `json:"execution_timeout"`
-	Concurrency      int      `json:"concurrency"`
-	LoggingEnabled   bool     `json:"logging_enabled"`
-	LogTTLMinutes    int      `json:"log_ttl_minutes"`
-	RunOnPlatform    bool     `json:"run_on_platform"`
-	RunOnEdge        bool     `json:"run_on_edge"`
-	EngineType       int      `json:"engine_type"`
-	AutoScale        bool     `json:"auto_scale"`
-	LogLevel         string   `json:"log_level"`
-	Topics           []string `json:"topics"`
+	Uuid                string   `json:"uuid"`
+	SystemKey           string   `json:"system_key"`
+	Name                string   `json:"name"`
+	Version             int      `json:"version"`
+	ExecutionTimeout    int      `json:"execution_timeout"`
+	Concurrency         int      `json:"concurrency"`
+	LoggingEnabled      bool     `json:"logging_enabled"`
+	LogTTLMinutes       int      `json:"log_ttl_minutes"`
+	RunOnPlatform       bool     `json:"run_on_platform"`
+	RunOnEdge           bool     `json:"run_on_edge"`
+	EngineType          int      `json:"engine_type"`
+	AutoBalance         bool     `json:"auto_balance"`
+	AutoScale           bool     `json:"auto_scale"`
+	MinScaleConcurrency int      `json:"min_scale_concurrency"`
+	MaxScaleConcurrency int      `json:"max_scale_concurrency"`
+	LogLevel            string   `json:"log_level"`
+	Topics              []string `json:"topics"`
 }
 
 // HeapStatistics mirrors ServiceHeapStatistics.

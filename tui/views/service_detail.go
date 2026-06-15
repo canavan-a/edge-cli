@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,29 +25,41 @@ const (
 
 var tabs = []string{"Info", "Code", "Logs"}
 
+// instanceEntry pairs an instance ID with its info for stable ordered display.
+type instanceEntry struct {
+	id   string
+	info models.RunningServiceInfo
+}
+
 type ServiceDetailModel struct {
-	client  *client.Client
-	svc     models.DBCodeMeta
-	tab     detailTab
-	done    bool
-	width   int
-	height  int
+	client *client.Client
+	svc    models.DBCodeMeta
+	tab    detailTab
+	done   bool
+	width  int
+	height int
 
-	// info
-	running map[string]models.RunningServiceInfo
+	// info tab
+	instances   []instanceEntry // ordered snapshot
+	cursor      int             // which instance is selected
+	confirm     string          // non-empty = show confirmation prompt ("stop-all" | "kill:<id>")
+	statusMsg   string          // transient feedback line
+	infoLoading bool
 
-	// code
+	// code tab
 	codeViewport viewport.Model
 	codeLoaded   bool
 	codeSpinner  spinner.Model
 
-	// logs
+	// logs tab
 	logsViewport  viewport.Model
 	logLines      []string
 	latestLogTime int64
 	logSpinner    spinner.Model
 	logLoading    bool
 }
+
+// ── messages ────────────────────────────────────────────────────────────────
 
 type codeLoadedMsg struct{ code string }
 type logsLoadedMsg struct {
@@ -55,6 +68,10 @@ type logsLoadedMsg struct {
 }
 type runningLoadedMsg struct{ running map[string]models.RunningServiceInfo }
 type logTickMsg struct{}
+type infoTickMsg struct{}
+type actionDoneMsg struct{ status string }
+
+// ── constructor ─────────────────────────────────────────────────────────────
 
 func NewServiceDetailModel(c *client.Client, svc models.DBCodeMeta, w, h int) ServiceDetailModel {
 	cs := spinner.New()
@@ -70,46 +87,115 @@ func NewServiceDetailModel(c *client.Client, svc models.DBCodeMeta, w, h int) Se
 	lv := viewport.New(w, vpH)
 
 	return ServiceDetailModel{
-		client:       c,
-		svc:          svc,
-		tab:          tabInfo,
-		width:        w,
-		height:       h,
+		client:      c,
+		svc:         svc,
+		tab:         tabInfo,
+		width:       w,
+		height:      h,
 		codeViewport: cv,
 		logsViewport: lv,
 		codeSpinner:  cs,
 		logSpinner:   ls,
+		infoLoading:  true,
 	}
 }
 
 func (m ServiceDetailModel) Init() tea.Cmd {
-	return fetchRunning(m.client)
+	return tea.Batch(fetchRunning(m.client), scheduleInfoPoll())
 }
+
+// ── update ───────────────────────────────────────────────────────────────────
 
 func (m ServiceDetailModel) Update(msg tea.Msg) (ServiceDetailModel, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+
 	case tea.KeyMsg:
+		// confirmation prompt swallows all keys
+		if m.confirm != "" {
+			switch msg.String() {
+			case "y", "Y":
+				action := m.confirm
+				m.confirm = ""
+				cmds = append(cmds, m.executeAction(action))
+			default:
+				m.confirm = ""
+				m.statusMsg = "cancelled"
+			}
+			return m, tea.Batch(cmds...)
+		}
+
 		switch msg.String() {
 		case "esc", "backspace":
 			m.done = true
 			return m, nil
+
 		case "tab":
 			m.tab = (m.tab + 1) % detailTab(len(tabs))
-			return m, m.onTabSwitch()
+			cmds = append(cmds, m.onTabSwitch())
+			return m, tea.Batch(cmds...)
+
 		case "1":
 			m.tab = tabInfo
 		case "2":
 			m.tab = tabCode
-			return m, m.onTabSwitch()
+			cmds = append(cmds, m.onTabSwitch())
+			return m, tea.Batch(cmds...)
 		case "3":
 			m.tab = tabLogs
-			return m, m.onTabSwitch()
+			cmds = append(cmds, m.onTabSwitch())
+			return m, tea.Batch(cmds...)
+
+		case "up", "k":
+			if m.tab == tabInfo && m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.tab == tabInfo && m.cursor < len(m.instances)-1 {
+				m.cursor++
+			}
+
+		case "s":
+			if m.tab == tabInfo {
+				cmds = append(cmds, startService(m.client, m.svc.Name))
+				m.statusMsg = "starting…"
+			}
+
+		case "S":
+			if m.tab == tabInfo && len(m.instances) > 0 {
+				m.confirm = "stop-all"
+			}
+
+		case "x", "enter":
+			if m.tab == tabInfo && len(m.instances) > 0 {
+				id := m.instances[m.cursor].id
+				m.confirm = "kill:" + id
+			}
 		}
 
 	case runningLoadedMsg:
-		m.running = msg.running
+		m.infoLoading = false
+		entries := make([]instanceEntry, 0, len(msg.running))
+		for id, info := range msg.running {
+			if info.CodeName == m.svc.Name {
+				entries = append(entries, instanceEntry{id, info})
+			}
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].info.Started < entries[j].info.Started
+		})
+		m.instances = entries
+		if m.cursor >= len(m.instances) {
+			m.cursor = max(0, len(m.instances)-1)
+		}
+
+	case infoTickMsg:
+		cmds = append(cmds, fetchRunning(m.client), scheduleInfoPoll())
+
+	case actionDoneMsg:
+		m.statusMsg = msg.status
+		cmds = append(cmds, fetchRunning(m.client))
 
 	case codeLoadedMsg:
 		m.codeLoaded = true
@@ -146,7 +232,7 @@ func (m ServiceDetailModel) Update(msg tea.Msg) (ServiceDetailModel, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	// Forward scroll events to the active viewport.
+	// Forward scroll to active viewport.
 	switch m.tab {
 	case tabCode:
 		var cmd tea.Cmd
@@ -176,11 +262,37 @@ func (m *ServiceDetailModel) onTabSwitch() tea.Cmd {
 	return nil
 }
 
+func (m *ServiceDetailModel) executeAction(action string) tea.Cmd {
+	switch {
+	case action == "stop-all":
+		ids := make([]string, len(m.instances))
+		for i, e := range m.instances {
+			ids[i] = e.id
+		}
+		return stopAll(m.client, ids)
+	case strings.HasPrefix(action, "kill:"):
+		id := strings.TrimPrefix(action, "kill:")
+		return stopInstance(m.client, id)
+	}
+	return nil
+}
+
+// ── view ─────────────────────────────────────────────────────────────────────
+
 func (m ServiceDetailModel) View() string {
 	header := m.renderHeader()
 	tabBar := m.renderTabBar()
 	body := m.renderBody()
-	help := helpBar("esc back", "tab next tab", "↑↓ scroll")
+
+	var helpBindings []string
+	switch m.tab {
+	case tabInfo:
+		helpBindings = []string{"esc back", "tab next", "s start", "S stop all", "↑↓ select instance", "x/enter kill"}
+	default:
+		helpBindings = []string{"esc back", "tab next", "↑↓ scroll"}
+	}
+	help := helpBar(helpBindings...)
+
 	return lipgloss.JoinVertical(lipgloss.Left, header, tabBar, body, help)
 }
 
@@ -210,6 +322,9 @@ func (m ServiceDetailModel) renderTabBar() string {
 }
 
 func (m ServiceDetailModel) renderBody() string {
+	if m.confirm != "" {
+		return m.renderConfirm()
+	}
 	switch m.tab {
 	case tabInfo:
 		return m.renderInfo()
@@ -230,25 +345,98 @@ func (m ServiceDetailModel) renderBody() string {
 	return ""
 }
 
+func (m ServiceDetailModel) renderConfirm() string {
+	warn := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+	var label string
+	if m.confirm == "stop-all" {
+		label = fmt.Sprintf("stop all %d instance(s)", len(m.instances))
+	} else {
+		id := strings.TrimPrefix(m.confirm, "kill:")
+		label = fmt.Sprintf("kill instance %s", shortID(id))
+	}
+	return fmt.Sprintf("\n  %s  press y to confirm, any other key to cancel\n",
+		warn.Render("⚠ "+label+"?"))
+}
+
 func (m ServiceDetailModel) renderInfo() string {
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "  Engine:      %s\n", engineLabel(m.svc.EngineType))
-	fmt.Fprintf(b, "  Logging:     %v (level: %s)\n", m.svc.LoggingEnabled, m.svc.LogLevel)
-	fmt.Fprintf(b, "  Auto-scale:  %v\n", m.svc.AutoScale)
-	fmt.Fprintf(b, "  Run on edge: %v\n", m.svc.RunOnEdge)
+
+	// ── service metadata ──────────────────────────────────────────────────
+	section := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
+	timeout := "never"
+	if m.svc.ExecutionTimeout > 0 {
+		timeout = fmt.Sprintf("%ds", m.svc.ExecutionTimeout)
+	}
+
+	fmt.Fprintf(b, "  %s\n", section.Render("Runtime Settings"))
+	fmt.Fprintf(b, "    Engine:          %s  (version %d)\n", engineLabel(m.svc.EngineType), m.svc.Version)
+	fmt.Fprintf(b, "    Exec timeout:    %s\n", timeout)
+	fmt.Fprintf(b, "    Run on edge:     %v\n", m.svc.RunOnEdge)
+	fmt.Fprintf(b, "    Run on platform: %v\n", m.svc.RunOnPlatform)
+	if len(m.svc.Topics) > 0 {
+		fmt.Fprintf(b, "    Topics:          %s\n", strings.Join(m.svc.Topics, ", "))
+	}
 	fmt.Fprintln(b)
 
-	var instances []models.RunningServiceInfo
-	for _, info := range m.running {
-		if info.CodeName == m.svc.Name {
-			instances = append(instances, info)
+	fmt.Fprintf(b, "  %s\n", section.Render("Logging"))
+	fmt.Fprintf(b, "    Enabled:  %v\n", m.svc.LoggingEnabled)
+	fmt.Fprintf(b, "    Level:    %s\n", m.svc.LogLevel)
+	fmt.Fprintf(b, "    TTL:      %d min\n", m.svc.LogTTLMinutes)
+	fmt.Fprintln(b)
+
+	fmt.Fprintf(b, "  %s\n", section.Render("Concurrency Settings"))
+	fmt.Fprintf(b, "    Instances:     %d\n", m.svc.Concurrency)
+	fmt.Fprintf(b, "    Auto-balance:  %v\n", m.svc.AutoBalance)
+	fmt.Fprintf(b, "    Auto-scale:    %v\n", m.svc.AutoScale)
+	if m.svc.AutoScale {
+		fmt.Fprintf(b, "    Min scale:     %d\n", m.svc.MinScaleConcurrency)
+		fmt.Fprintf(b, "    Max scale:     %d\n", m.svc.MaxScaleConcurrency)
+	}
+	fmt.Fprintln(b)
+
+	// ── status line ───────────────────────────────────────────────────────
+	if m.statusMsg != "" {
+		status := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+		fmt.Fprintf(b, "  %s\n\n", status.Render(m.statusMsg))
+	}
+
+	// ── running instances ─────────────────────────────────────────────────
+	if m.infoLoading {
+		fmt.Fprintf(b, "  Loading instances…\n")
+		return b.String()
+	}
+
+	fmt.Fprintf(b, "  Running instances: %d\n", len(m.instances))
+	if len(m.instances) == 0 {
+		return b.String()
+	}
+
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	termStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+
+	for i, e := range m.instances {
+		started := time.Unix(0, e.info.Started).Format("2006-01-02 15:04:05")
+		heap := formatBytesLocal(e.info.HeapStatistics.TotalBytesAllocated())
+		if e.info.HeapStatistics.Error != "" {
+			heap = "-"
+		}
+
+		terminating := ""
+		if e.info.IsTerminating {
+			terminating = termStyle.Render(" [terminating]")
+		}
+
+		line := fmt.Sprintf("    %s  started %s  heap %s%s",
+			shortID(e.id), started, heap, terminating)
+
+		if i == m.cursor {
+			fmt.Fprintf(b, "%s\n", selectedStyle.Render("  ▶ "+strings.TrimLeft(line, " ")))
+		} else {
+			fmt.Fprintf(b, "%s\n", dimStyle.Render(line))
 		}
 	}
-	fmt.Fprintf(b, "  Running instances: %d\n", len(instances))
-	for _, inst := range instances {
-		started := time.Unix(0, inst.Started).Format("2006-01-02 15:04:05")
-		fmt.Fprintf(b, "    started %s  heap %s\n", started, formatBytesLocal(inst.HeapStatistics.TotalBytesAllocated()))
-	}
+
 	return b.String()
 }
 
@@ -262,12 +450,7 @@ func (m *ServiceDetailModel) resize(w, h int) {
 	m.logsViewport.Height = vpH
 }
 
-func viewportHeight(total int) int {
-	if total < 8 {
-		return 4
-	}
-	return total - 6 // header + tabbar + helpbar
-}
+// ── commands ─────────────────────────────────────────────────────────────────
 
 func fetchRunning(c *client.Client) tea.Cmd {
 	return func() tea.Msg {
@@ -276,6 +459,45 @@ func fetchRunning(c *client.Client) tea.Cmd {
 			return errMsg{err}
 		}
 		return runningLoadedMsg{r}
+	}
+}
+
+func scheduleInfoPoll() tea.Cmd {
+	return tea.Tick(2*time.Second, func(_ time.Time) tea.Msg {
+		return infoTickMsg{}
+	})
+}
+
+func startService(c *client.Client, name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := c.StartService(name, nil); err != nil {
+			return actionDoneMsg{"start failed: " + err.Error()}
+		}
+		return actionDoneMsg{"started"}
+	}
+}
+
+func stopInstance(c *client.Client, id string) tea.Cmd {
+	return func() tea.Msg {
+		if err := c.StopInstance(id, 30); err != nil {
+			return actionDoneMsg{"kill failed: " + err.Error()}
+		}
+		return actionDoneMsg{"killed " + shortID(id)}
+	}
+}
+
+func stopAll(c *client.Client, ids []string) tea.Cmd {
+	return func() tea.Msg {
+		var failed int
+		for _, id := range ids {
+			if err := c.StopInstance(id, 30); err != nil {
+				failed++
+			}
+		}
+		if failed > 0 {
+			return actionDoneMsg{fmt.Sprintf("stopped %d/%d instances", len(ids)-failed, len(ids))}
+		}
+		return actionDoneMsg{fmt.Sprintf("stopped all %d instances", len(ids))}
 	}
 }
 
@@ -309,16 +531,25 @@ func scheduleLogPoll() tea.Cmd {
 	})
 }
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+func viewportHeight(total int) int {
+	if total < 8 {
+		return 4
+	}
+	return total - 6
+}
+
 func numberLines(code string) string {
 	lines := strings.Split(code, "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	width := len(fmt.Sprintf("%d", len(lines)))
+	w := len(fmt.Sprintf("%d", len(lines)))
 	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	var b strings.Builder
 	for i, line := range lines {
-		b.WriteString(numStyle.Render(fmt.Sprintf("%*d  ", width, i+1)))
+		b.WriteString(numStyle.Render(fmt.Sprintf("%*d  ", w, i+1)))
 		b.WriteString(line)
 		b.WriteByte('\n')
 	}
@@ -334,4 +565,18 @@ func formatBytesLocal(b uint64) string {
 	default:
 		return fmt.Sprintf("%d B", b)
 	}
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -13,8 +14,6 @@ import (
 	"edge-cli/models"
 )
 
-// ServicesModel is the root screen — shows a list of services and lets you
-// drill into logs or code for the selected one.
 type ServicesModel struct {
 	client  *client.Client
 	state   servicesState
@@ -34,30 +33,64 @@ const (
 	stateDetail
 )
 
-// serviceItem wraps DBCodeMeta to satisfy list.Item.
 type serviceItem struct{ svc models.DBCodeMeta }
 
 func (i serviceItem) Title() string       { return i.svc.Name }
-func (i serviceItem) Description() string { return engineLabel(i.svc.EngineType) }
+func (i serviceItem) Description() string { return "" }
 func (i serviceItem) FilterValue() string { return i.svc.Name }
 
 type servicesLoadedMsg struct{ services []models.DBCodeMeta }
 type errMsg struct{ err error }
+
+// compactDelegate renders each service as a single line:
+//   ▶ serviceName        duk  conc:1  log:debug
+type compactDelegate struct{}
+
+func (d compactDelegate) Height() int                               { return 1 }
+func (d compactDelegate) Spacing() int                             { return 0 }
+func (d compactDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
+
+func (d compactDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	i, ok := item.(serviceItem)
+	if !ok {
+		return
+	}
+
+	svc := i.svc
+	name := svc.Name
+	meta := fmt.Sprintf("%s  conc:%-2d  log:%s",
+		engineLabel(svc.EngineType),
+		svc.Concurrency,
+		logLevelLabel(svc.LoggingEnabled, svc.LogLevel),
+	)
+
+	selected := index == m.Index()
+
+	nameStyle := lipgloss.NewStyle().Width(36)
+	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	if selected {
+		nameStyle = nameStyle.Foreground(lipgloss.Color("86")).Bold(true)
+		metaStyle = metaStyle.Foreground(lipgloss.Color("243"))
+		fmt.Fprintf(w, "  %s  %s",
+			nameStyle.Render("▶ "+name),
+			metaStyle.Render(meta),
+		)
+	} else {
+		nameStyle = nameStyle.Foreground(lipgloss.Color("252"))
+		fmt.Fprintf(w, "  %s  %s",
+			nameStyle.Render("  "+name),
+			metaStyle.Render(meta),
+		)
+	}
+}
 
 func NewServicesModel(c *client.Client) ServicesModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	delegate := list.NewDefaultDelegate()
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color("86")).
-		BorderLeftForeground(lipgloss.Color("86"))
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
-		Foreground(lipgloss.Color("243")).
-		BorderLeftForeground(lipgloss.Color("86"))
-
-	l := list.New(nil, delegate, 0, 0)
+	l := list.New(nil, compactDelegate{}, 0, 0)
 	l.Title = "edge-cli — services"
 	l.Styles.Title = lipgloss.NewStyle().
 		Bold(true).
@@ -65,6 +98,7 @@ func NewServicesModel(c *client.Client) ServicesModel {
 		Padding(0, 1)
 	l.SetShowStatusBar(true)
 	l.SetFilteringEnabled(true)
+	l.SetShowHelp(true)
 
 	return ServicesModel{
 		client:  c,
@@ -179,8 +213,18 @@ func engineLabel(t int) string {
 	case 1:
 		return "v8"
 	default:
-		return "unknown"
+		return "unk"
 	}
+}
+
+func logLevelLabel(enabled bool, level string) string {
+	if !enabled {
+		return "off"
+	}
+	if level == "" {
+		return "on"
+	}
+	return level
 }
 
 var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))

@@ -159,6 +159,20 @@ func (c *Client) StartService(name string, params map[string]any) error {
 	return err
 }
 
+// GetServiceCode returns the source code of a service.
+func (c *Client) GetServiceCode(name string) (string, error) {
+	data, err := c.do("GET", "/api/v/1/code/"+c.systemKey+"/"+name, nil)
+	if err != nil {
+		return "", err
+	}
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", err
+	}
+	code, _ := result["code"].(string)
+	return code, nil
+}
+
 // ListCollections returns all collections for the system.
 func (c *Client) ListCollections() ([]models.CollectionInfo, error) {
 	data, err := c.do("GET", "/api/v/3/allcollections/"+c.systemKey, nil)

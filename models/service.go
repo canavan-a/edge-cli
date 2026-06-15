@@ -54,3 +54,12 @@ type LegacyLogUnit struct {
 	Time      string `json:"service_execution_time"`
 	ServiceId string `json:"service_instance_id"`
 }
+
+// LogEntry mirrors a single row from the v4 code logs endpoint.
+type LogEntry struct {
+	Name      string `json:"name"`
+	ServiceID string `json:"service_id"`
+	Level     string `json:"level"`
+	Log       string `json:"log"`
+	Time      int64  `json:"time"` // Unix microseconds
+}

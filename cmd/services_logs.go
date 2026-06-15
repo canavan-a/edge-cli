@@ -9,17 +9,16 @@ import (
 
 	"edge-cli/client"
 	"edge-cli/config"
+	"edge-cli/models"
 
 	"github.com/spf13/cobra"
 )
 
 var servicesLogsCmd = &cobra.Command{
-	Use:   "logs <service-name>",
-	Short: "Fetch logs for a service (use --follow to tail)",
-	Args:  cobra.ExactArgs(1),
+	Use:   "logs [service-name]",
+	Short: "Fetch logs for a service (use --follow to tail, --all for all services)",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
-
 		edgeConfigPath, _ := cmd.Flags().GetString("edge-config")
 		systemKey, err := resolveSystemKey(edgeConfigPath)
 		if err != nil {
@@ -32,31 +31,67 @@ var servicesLogsCmd = &cobra.Command{
 		}
 
 		follow, _ := cmd.Flags().GetBool("follow")
+		allServices, _ := cmd.Flags().GetBool("all")
+		level, _ := cmd.Flags().GetString("level")
+		sinceStr, _ := cmd.Flags().GetString("since")
+		limit, _ := cmd.Flags().GetInt("limit")
 		intervalStr, _ := cmd.Flags().GetString("interval")
+
+		if len(args) == 0 && !allServices {
+			return fmt.Errorf("specify a service name or use --all")
+		}
+
+		var serviceName string
+		if len(args) > 0 {
+			serviceName = args[0]
+		}
+
 		interval, err := time.ParseDuration(intervalStr)
 		if err != nil {
 			return fmt.Errorf("invalid --interval %q: %w", intervalStr, err)
 		}
 
+		var since time.Time
+		if sinceStr != "" {
+			dur, err := time.ParseDuration(sinceStr)
+			if err != nil {
+				// try absolute timestamp
+				since, err = time.Parse("2006-01-02 15:04:05", sinceStr)
+				if err != nil {
+					return fmt.Errorf("invalid --since %q: use a duration (e.g. 30m, 1h) or timestamp (2006-01-02 15:04:05)", sinceStr)
+				}
+			} else {
+				since = time.Now().Add(-dur)
+			}
+		}
+
 		c := client.New(config.URL(), token, systemKey)
 
-		// Initial fetch — print all available log runs.
-		logs, err := c.GetLogs(name)
+		opts := client.LogQueryOpts{
+			ServiceName: serviceName,
+			Level:       level,
+			Since:       since,
+			Limit:       limit,
+		}
+
+		entries, err := c.GetLogsV4(opts)
 		if err != nil {
 			return fmt.Errorf("failed to get logs: %w", err)
 		}
 
-		seen := make(map[string]bool)
-		for _, l := range logs {
-			seen[l.ServiceId] = true
-			printLogUnit(name, l.ServiceId, l.Time, l.Log)
+		// Track the latest timestamp seen so follow-mode only fetches newer entries.
+		var latestTime int64
+		for _, e := range entries {
+			printLogEntry(e)
+			if e.Time > latestTime {
+				latestTime = e.Time
+			}
 		}
 
 		if !follow {
 			return nil
 		}
 
-		// Poll loop — print new runs as they appear.
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 
@@ -68,35 +103,47 @@ var servicesLogsCmd = &cobra.Command{
 			case <-sig:
 				return nil
 			case <-ticker.C:
-				logs, err := c.GetLogs(name)
+				pollOpts := client.LogQueryOpts{
+					ServiceName: serviceName,
+					Level:       level,
+					Limit:       limit,
+				}
+				if latestTime > 0 {
+					// Fetch only entries newer than the last one we printed.
+					pollOpts.AfterTimeMicros = latestTime
+				}
+
+				entries, err := c.GetLogsV4(pollOpts)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "poll error: %s\n", err)
 					continue
 				}
-				for _, l := range logs {
-					if seen[l.ServiceId] {
-						continue
+				for _, e := range entries {
+					printLogEntry(e)
+					if e.Time > latestTime {
+						latestTime = e.Time
 					}
-					seen[l.ServiceId] = true
-					printLogUnit(name, l.ServiceId, l.Time, l.Log)
 				}
 			}
 		}
 	},
 }
 
-func printLogUnit(serviceName, id, timestamp, log string) {
-	fmt.Printf("=== %s [%s] @ %s ===\n", serviceName, id, timestamp)
-	if log != "" {
-		fmt.Print(log)
-		if log[len(log)-1] != '\n' {
-			fmt.Println()
-		}
+func printLogEntry(e models.LogEntry) {
+	ts := time.UnixMicro(e.Time).Format("2006-01-02 15:04:05")
+	prefix := fmt.Sprintf("[%s] %s", ts, e.Name)
+	if e.Level != "" {
+		prefix += " [" + e.Level + "]"
 	}
+	fmt.Printf("%s: %s\n", prefix, e.Log)
 }
 
 func init() {
 	servicesCmd.AddCommand(servicesLogsCmd)
-	servicesLogsCmd.Flags().BoolP("follow", "f", false, "Poll for new log runs continuously")
+	servicesLogsCmd.Flags().BoolP("follow", "f", false, "Poll for new log entries continuously")
+	servicesLogsCmd.Flags().BoolP("all", "a", false, "Show logs for all services")
+	servicesLogsCmd.Flags().String("level", "", "Filter by log level (e.g. info, warn, error)")
+	servicesLogsCmd.Flags().String("since", "", "Show logs since duration (e.g. 30m, 1h) or timestamp (2006-01-02 15:04:05)")
+	servicesLogsCmd.Flags().Int("limit", 50, "Max number of log entries to fetch per request")
 	servicesLogsCmd.Flags().String("interval", "2s", "Polling interval when using --follow")
 }

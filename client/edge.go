@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 
 	"edge-cli/models"
 )
@@ -155,6 +157,68 @@ func (c *Client) StartService(name string, params map[string]any) error {
 	}
 	_, err := c.do("POST", "/api/v/1/code/"+c.systemKey+"/"+name, params)
 	return err
+}
+
+// LogQueryOpts controls what the v4 logs endpoint returns.
+type LogQueryOpts struct {
+	ServiceName     string
+	Level           string
+	Since           time.Time    // zero means no lower bound
+	AfterTimeMicros int64        // exclusive lower bound in microseconds (used for follow polling)
+	Limit           int
+}
+
+// GetLogsV4 queries the v4 code logs endpoint with rich filtering.
+func (c *Client) GetLogsV4(opts LogQueryOpts) ([]models.LogEntry, error) {
+	filters := [][]map[string]any{}
+
+	if opts.ServiceName != "" {
+		filters = append(filters, []map[string]any{{"EQ": map[string]any{"name": opts.ServiceName}}})
+	}
+	if opts.Level != "" {
+		filters = append(filters, []map[string]any{{"EQ": map[string]any{"level": opts.Level}}})
+	}
+
+	var timeThreshold int64
+	if opts.AfterTimeMicros > 0 {
+		timeThreshold = opts.AfterTimeMicros
+	} else if !opts.Since.IsZero() {
+		timeThreshold = opts.Since.UnixMicro()
+	}
+	if timeThreshold > 0 {
+		filters = append(filters, []map[string]any{{"GT": map[string]any{"time": timeThreshold}}})
+	}
+
+	pageSize := 50
+	if opts.Limit > 0 {
+		pageSize = opts.Limit
+	}
+
+	q := map[string]any{
+		"SORT":     []map[string]any{{"ASC": "time"}},
+		"PAGESIZE": pageSize,
+		"PAGENUM":  1,
+	}
+	if len(filters) > 0 {
+		q["FILTERS"] = filters
+	}
+
+	qJSON, err := json.Marshal(q)
+	if err != nil {
+		return nil, err
+	}
+
+	path := "/api/v/4/" + c.systemKey + "/code/logs?query=" + url.QueryEscape(string(qJSON))
+	data, err := c.do("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []models.LogEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
 }
 
 // GetLogByID returns the log for a specific service run.

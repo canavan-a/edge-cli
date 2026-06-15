@@ -80,7 +80,7 @@ var servicesShowCmd = &cobra.Command{
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 		fmt.Fprintln(w, "  ID\tSTARTED\tTERMINATING\tHEAP USED")
 		for _, inst := range instances {
-			startedStr := time.Unix(0, inst.started*int64(time.Millisecond)).Format("2006-01-02 15:04:05")
+			startedStr := time.Unix(0, inst.started).Format("2006-01-02 15:04:05")
 			heapStr := formatBytes(inst.heapBytes)
 			if inst.heapError != "" {
 				heapStr = "-"

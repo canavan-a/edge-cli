@@ -15,14 +15,15 @@ import (
 )
 
 type ServicesModel struct {
-	client  *client.Client
-	state   servicesState
-	list    list.Model
-	spinner spinner.Model
-	detail  *ServiceDetailModel
-	err     error
-	width   int
-	height  int
+	client    *client.Client
+	connLabel string
+	state     servicesState
+	list      list.Model
+	spinner   spinner.Model
+	detail    *ServiceDetailModel
+	err       error
+	width     int
+	height    int
 }
 
 type servicesState int
@@ -90,8 +91,9 @@ func NewServicesModel(c *client.Client) ServicesModel {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	connLabel := c.ConnectionLabel()
 	l := list.New(nil, compactDelegate{}, 0, 0)
-	l.Title = "edge-cli — services"
+	l.Title = "edge-cli  [" + connLabel + "]"
 	l.Styles.Title = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("86")).
@@ -101,10 +103,11 @@ func NewServicesModel(c *client.Client) ServicesModel {
 	l.SetShowHelp(true)
 
 	return ServicesModel{
-		client:  c,
-		state:   stateLoading,
-		list:    l,
-		spinner: s,
+		client:    c,
+		connLabel: connLabel,
+		state:     stateLoading,
+		list:      l,
+		spinner:   s,
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"edge-cli/client"
 	"edge-cli/config"
 
 	"github.com/pelletier/go-toml/v2"
@@ -35,6 +36,15 @@ func init() {
 	viper.BindPFlag("dev_token", rootCmd.PersistentFlags().Lookup("token"))
 	viper.BindPFlag("system_key", rootCmd.PersistentFlags().Lookup("system-key"))
 	viper.BindPFlag("url", rootCmd.PersistentFlags().Lookup("url"))
+}
+
+// newClient builds a direct or proxy client depending on config.
+func newClient(systemKey string) *client.Client {
+	token := config.Token()
+	if config.IsProxyMode() {
+		return client.NewProxy(config.ProxyURL(), token, systemKey, config.EdgeName())
+	}
+	return client.New(config.URL(), token, systemKey)
 }
 
 // resolveSystemKey returns the system key from flags/env/config, or attempts

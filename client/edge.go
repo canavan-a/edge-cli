@@ -16,6 +16,7 @@ type Client struct {
 	baseURL   string
 	token     string
 	systemKey string
+	edgeName  string // non-empty = proxy mode
 	http      *http.Client
 }
 
@@ -26,6 +27,25 @@ func New(baseURL, token, systemKey string) *Client {
 		systemKey: systemKey,
 		http:      &http.Client{},
 	}
+}
+
+// NewProxy creates a client that routes requests through the platform proxy to a named edge.
+func NewProxy(platformURL, token, systemKey, edgeName string) *Client {
+	return &Client{
+		baseURL:   platformURL,
+		token:     token,
+		systemKey: systemKey,
+		edgeName:  edgeName,
+		http:      &http.Client{},
+	}
+}
+
+// ConnectionLabel returns a human-readable description of the connection target.
+func (c *Client) ConnectionLabel() string {
+	if c.edgeName != "" {
+		return "proxy → " + c.baseURL + "  edge: " + c.edgeName
+	}
+	return "direct → " + c.baseURL
 }
 
 func (c *Client) do(method, path string, body any) ([]byte, error) {
@@ -44,6 +64,10 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 	}
 	req.Header.Set("ClearBlade-DevToken", c.token)
 	req.Header.Set("Content-Type", "application/json")
+	if c.edgeName != "" {
+		req.Header.Set("Clearblade-Edge", c.edgeName)
+		req.Header.Set("Clearblade-Systemkey", c.systemKey)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -171,6 +195,19 @@ func (c *Client) GetServiceCode(name string) (string, error) {
 	}
 	code, _ := result["code"].(string)
 	return code, nil
+}
+
+// ListEdges returns all edges for the system (platform only).
+func (c *Client) ListEdges() ([]models.EdgeInfo, error) {
+	data, err := c.do("GET", "/admin/edges/"+c.systemKey, nil)
+	if err != nil {
+		return nil, err
+	}
+	var edges []models.EdgeInfo
+	if err := json.Unmarshal(data, &edges); err != nil {
+		return nil, err
+	}
+	return edges, nil
 }
 
 // ListCollections returns all collections for the system.

@@ -27,7 +27,15 @@ var statusCmd = &cobra.Command{
 		} else {
 			fmt.Println("Logged in (email unknown)")
 		}
-		fmt.Printf("Edge URL:   %s\n", url)
+
+		if config.IsProxyMode() {
+			fmt.Printf("Mode:       proxy\n")
+			fmt.Printf("Platform:   %s\n", config.ProxyURL())
+			fmt.Printf("Edge:       %s\n", config.EdgeName())
+		} else {
+			fmt.Printf("Mode:       direct\n")
+			fmt.Printf("Edge URL:   %s\n", url)
+		}
 		fmt.Printf("Config:     %s\n", config.ConfigFile())
 	},
 }

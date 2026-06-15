@@ -58,6 +58,20 @@ type LegacyLogUnit struct {
 	ServiceId string `json:"service_instance_id"`
 }
 
+// EdgeInfo mirrors the edge metadata returned by /admin/edges/{systemKey}.
+type EdgeInfo struct {
+	Name                 string `json:"name"`
+	Description          string `json:"description"`
+	PublicAddr           string `json:"public_addr"`
+	LocalAddr            string `json:"local_addr"`
+	LastSeenVersion      string `json:"last_seen_version"`
+	LastSeenOS           string `json:"last_seen_os"`
+	LastSeenArchitecture string `json:"last_seen_architecture"`
+	LastConnect          int64  `json:"last_connect"`
+	LastDisconnect       int64  `json:"last_disconnect"`
+	IsConnected          bool   `json:"isConnected"`
+}
+
 // CollectionInfo mirrors the collection metadata returned by the platform.
 type CollectionInfo struct {
 	Name      string `json:"name"`

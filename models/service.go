@@ -55,6 +55,20 @@ type LegacyLogUnit struct {
 	ServiceId string `json:"service_instance_id"`
 }
 
+// CollectionInfo mirrors the collection metadata returned by the platform.
+type CollectionInfo struct {
+	Name      string `json:"name"`
+	ID        string `json:"collectionID"`
+	SystemKey string `json:"appID"`
+}
+
+// CollectionData mirrors the response from a collection GET request.
+type CollectionData struct {
+	Data        []map[string]any `json:"DATA"`
+	NextPageURL *string          `json:"NEXTPAGEURL"`
+	PrevPageURL *string          `json:"PREVPAGEURL"`
+}
+
 // LogEntry mirrors a single row from the v4 code logs endpoint.
 type LogEntry struct {
 	Name      string `json:"name"`

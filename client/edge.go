@@ -159,6 +159,68 @@ func (c *Client) StartService(name string, params map[string]any) error {
 	return err
 }
 
+// ListCollections returns all collections for the system.
+func (c *Client) ListCollections() ([]models.CollectionInfo, error) {
+	data, err := c.do("GET", "/api/v/3/allcollections/"+c.systemKey, nil)
+	if err != nil {
+		return nil, err
+	}
+	var cols []models.CollectionInfo
+	if err := json.Unmarshal(data, &cols); err != nil {
+		return nil, err
+	}
+	return cols, nil
+}
+
+// CollectionQueryOpts controls what QueryCollection returns.
+type CollectionQueryOpts struct {
+	SortBy   string
+	SortDesc bool
+	Limit    int
+	Page     int
+}
+
+// QueryCollection fetches rows from a collection by name.
+func (c *Client) QueryCollection(name string, opts CollectionQueryOpts) (*models.CollectionData, error) {
+	pageSize := 25
+	if opts.Limit > 0 {
+		pageSize = opts.Limit
+	}
+	page := 1
+	if opts.Page > 1 {
+		page = opts.Page
+	}
+
+	q := map[string]any{
+		"PAGESIZE": pageSize,
+		"PAGENUM":  page,
+	}
+	if opts.SortBy != "" {
+		dir := "ASC"
+		if opts.SortDesc {
+			dir = "DESC"
+		}
+		q["SORT"] = []map[string]any{{dir: opts.SortBy}}
+	}
+
+	qJSON, err := json.Marshal(q)
+	if err != nil {
+		return nil, err
+	}
+
+	path := "/api/v/1/collection/" + c.systemKey + "/" + name + "?query=" + url.QueryEscape(string(qJSON))
+	data, err := c.do("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result models.CollectionData
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // LogQueryOpts controls what the v4 logs endpoint returns.
 type LogQueryOpts struct {
 	ServiceName     string

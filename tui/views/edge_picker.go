@@ -23,6 +23,7 @@ type EdgePickerModel struct {
 	cancelled     bool
 	selected      string
 	selectedToken string
+	showDesc      bool
 }
 
 type edgeItem struct{ edge models.EdgeInfo }
@@ -39,10 +40,15 @@ func (i edgeItem) FilterValue() string { return i.edge.Name }
 type edgesLoadedMsg struct{ edges []models.EdgeInfo }
 
 // edgePickerDelegate renders each edge as a single compact line with connected status.
-type edgePickerDelegate struct{}
+type edgePickerDelegate struct{ showDesc bool }
 
-func (d edgePickerDelegate) Height() int                               { return 1 }
-func (d edgePickerDelegate) Spacing() int                             { return 0 }
+func (d edgePickerDelegate) Height() int {
+	if d.showDesc {
+		return 2
+	}
+	return 1
+}
+func (d edgePickerDelegate) Spacing() int { return 0 }
 func (d edgePickerDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
 
 func (d edgePickerDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
@@ -90,6 +96,10 @@ func (d edgePickerDelegate) Render(w io.Writer, m list.Model, index int, item li
 		nameStyle.Render(prefix+i.edge.Name),
 		metaStyle.Render(meta),
 	)
+	if d.showDesc && i.edge.Description != "" {
+		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).PaddingLeft(6)
+		fmt.Fprintf(w, "\n%s", descStyle.Render(i.edge.Description))
+	}
 }
 
 func NewEdgePickerModel(c *client.Client) EdgePickerModel {
@@ -126,6 +136,10 @@ func (m EdgePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c", "esc":
 			m.cancelled = true
 			return m, tea.Quit
+		case "d":
+			m.showDesc = !m.showDesc
+			m.list.SetDelegate(edgePickerDelegate{showDesc: m.showDesc})
+			return m, nil
 		case "L":
 			// Clear all cached proxy state so next launch goes through full flow.
 			_ = config.SaveProxyConfig("", "")
@@ -179,7 +193,7 @@ func (m EdgePickerModel) View() string {
 	if m.loading {
 		return fmt.Sprintf("\n  %s fetching edges…\n", m.spinner.View())
 	}
-	return m.list.View() + "\n" + helpBar("enter select", "L logout & clear saved proxy", "esc cancel")
+	return m.list.View() + "\n" + helpBar("enter select", "d toggle description", "L logout & clear saved proxy", "esc cancel")
 }
 
 func fetchEdges(c *client.Client) tea.Cmd {

@@ -8,12 +8,13 @@ import (
 )
 
 const (
-	KeyToken     = "dev_token"
-	KeyEmail     = "email"
-	KeyURL       = "url"
-	KeySystemKey = "system_key"
-	KeyProxyURL  = "proxy_url"
-	KeyEdgeName  = "edge_name"
+	KeyToken      = "dev_token"
+	KeyEmail      = "email"
+	KeyURL        = "url"
+	KeySystemKey  = "system_key"
+	KeyProxyURL   = "proxy_url"
+	KeyEdgeName   = "edge_name"
+	KeyEdgeTokens = "edge_tokens"
 )
 
 func ConfigDir() string {
@@ -74,3 +75,31 @@ func EdgeName() string  { return viper.GetString(KeyEdgeName) }
 
 // IsProxyMode returns true when a proxy URL and edge name are configured.
 func IsProxyMode() bool { return ProxyURL() != "" && EdgeName() != "" }
+
+// EdgeToken returns the cached dev token for a named edge, or empty string.
+func EdgeToken(edgeName string) string {
+	tokens := viper.GetStringMapString(KeyEdgeTokens)
+	return tokens[edgeName]
+}
+
+// SaveEdgeToken caches a dev token for a named edge.
+func SaveEdgeToken(edgeName, token string) error {
+	if err := os.MkdirAll(ConfigDir(), 0700); err != nil {
+		return err
+	}
+	tokens := viper.GetStringMapString(KeyEdgeTokens)
+	if tokens == nil {
+		tokens = map[string]string{}
+	}
+	tokens[edgeName] = token
+	viper.Set(KeyEdgeTokens, tokens)
+	return viper.WriteConfigAs(ConfigFile())
+}
+
+// ClearEdgeToken removes the cached token for a named edge.
+func ClearEdgeToken(edgeName string) error {
+	tokens := viper.GetStringMapString(KeyEdgeTokens)
+	delete(tokens, edgeName)
+	viper.Set(KeyEdgeTokens, tokens)
+	return viper.WriteConfigAs(ConfigFile())
+}

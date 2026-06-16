@@ -11,12 +11,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"edge-cli/client"
+	"edge-cli/config"
 	"edge-cli/models"
 )
+
+// LogoutMsg is returned when the user logs out — the caller should clear the
+// cached edge token and re-enter the proxy flow.
+type LogoutMsg struct{ EdgeName string }
 
 type ServicesModel struct {
 	client    *client.Client
 	connLabel string
+	edgeName  string // non-empty in proxy mode, used for logout
 	state     servicesState
 	list      list.Model
 	spinner   spinner.Model
@@ -105,6 +111,7 @@ func NewServicesModel(c *client.Client) ServicesModel {
 	return ServicesModel{
 		client:    c,
 		connLabel: connLabel,
+		edgeName:  c.EdgeName(),
 		state:     stateLoading,
 		list:      l,
 		spinner:   s,
@@ -130,6 +137,11 @@ func (m ServicesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "L":
+			if m.edgeName != "" {
+				_ = config.ClearEdgeToken(m.edgeName)
+				return m, tea.Quit
+			}
 		case "enter":
 			if m.state == stateList {
 				if i, ok := m.list.SelectedItem().(serviceItem); ok {
@@ -196,7 +208,11 @@ func (m ServicesModel) View() string {
 	if m.state == stateDetail && m.detail != nil {
 		return m.detail.View()
 	}
-	return m.list.View()
+	body := m.list.View()
+	if m.edgeName != "" {
+		body += "\n" + helpStyle.Render("  L logout from edge")
+	}
+	return body
 }
 
 func fetchServices(c *client.Client) tea.Cmd {

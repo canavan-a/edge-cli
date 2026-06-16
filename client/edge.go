@@ -40,6 +40,9 @@ func NewProxy(platformURL, token, systemKey, edgeName string) *Client {
 	}
 }
 
+// EdgeName returns the edge name if in proxy mode, otherwise empty string.
+func (c *Client) EdgeName() string { return c.edgeName }
+
 // ConnectionLabel returns a human-readable description of the connection target.
 func (c *Client) ConnectionLabel() string {
 	if c.edgeName != "" {
@@ -112,6 +115,8 @@ func AuthenticateViaProxy(platformURL, platformToken, systemKey, edgeName string
 
 // AuthenticateEdgeViaProxy authenticates directly against an edge through the platform proxy
 // using explicit credentials, returning an edge-local dev token.
+// /admin/auth is a Public endpoint — no DevToken header is sent to avoid the platform
+// rejecting the request before proxying it.
 func AuthenticateEdgeViaProxy(platformURL, platformToken, systemKey, edgeName, email, password string) (string, error) {
 	payload := map[string]string{"email": email, "password": password}
 	b, _ := json.Marshal(payload)
@@ -121,7 +126,8 @@ func AuthenticateEdgeViaProxy(platformURL, platformToken, systemKey, edgeName, e
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("ClearBlade-DevToken", platformToken)
+	// Do NOT set ClearBlade-DevToken here — /admin/auth is Public and some platform
+	// versions validate the DevToken before the proxy check, causing a 400.
 	req.Header.Set("Clearblade-Edge", edgeName)
 	req.Header.Set("Clearblade-Systemkey", systemKey)
 

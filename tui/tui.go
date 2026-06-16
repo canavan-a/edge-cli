@@ -22,12 +22,24 @@ func promptEdgeAuth(platformURL, platformToken, systemKey, edgeName string) (str
 	if cp.Cancelled() {
 		return "", nil
 	}
-	edgeToken, err := client.AuthenticateEdgeViaProxy(platformURL, platformToken, systemKey, edgeName, cp.Email(), cp.Password())
-	if err != nil {
-		return "", fmt.Errorf("edge auth failed: %w", err)
+
+	email, password := cp.Email(), cp.Password()
+	authCmd := func() tea.Msg {
+		token, err := client.AuthenticateEdgeViaProxy(platformURL, platformToken, systemKey, edgeName, email, password)
+		return views.AuthDoneMsg{Token: token, Err: err}
 	}
-	_ = config.SaveEdgeToken(edgeName, edgeToken)
-	return edgeToken, nil
+	spinnerModel := views.NewAuthSpinnerModel("authenticating with edge "+edgeName+"…", authCmd)
+	spinProg := tea.NewProgram(spinnerModel, tea.WithAltScreen())
+	spinResult, err := spinProg.Run()
+	if err != nil {
+		return "", err
+	}
+	sm := spinResult.(views.AuthSpinnerModel)
+	if sm.Err() != nil {
+		return "", fmt.Errorf("edge auth failed: %w", sm.Err())
+	}
+	_ = config.SaveEdgeToken(edgeName, sm.Token())
+	return sm.Token(), nil
 }
 
 func Run(c *client.Client) error {

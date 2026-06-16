@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"edge-cli/client"
+	"edge-cli/config"
 	"edge-cli/models"
 )
 
@@ -125,6 +126,14 @@ func (m EdgePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c", "esc":
 			m.cancelled = true
 			return m, tea.Quit
+		case "L":
+			// Clear all cached proxy state so next launch goes through full flow.
+			_ = config.SaveProxyConfig("", "")
+			if saved := config.EdgeName(); saved != "" {
+				_ = config.ClearEdgeToken(saved)
+			}
+			m.cancelled = true
+			return m, tea.Quit
 		case "enter":
 			if !m.loading {
 				if i, ok := m.list.SelectedItem().(edgeItem); ok {
@@ -170,7 +179,7 @@ func (m EdgePickerModel) View() string {
 	if m.loading {
 		return fmt.Sprintf("\n  %s fetching edges…\n", m.spinner.View())
 	}
-	return m.list.View()
+	return m.list.View() + "\n" + helpBar("enter select", "L logout & clear saved proxy", "esc cancel")
 }
 
 func fetchEdges(c *client.Client) tea.Cmd {

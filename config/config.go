@@ -58,6 +58,11 @@ func SaveProxyConfig(proxyURL, edgeName string) error {
 	return viper.WriteConfigAs(ConfigFile())
 }
 
+func SetSystemKey(sk string) {
+	viper.Set(KeySystemKey, sk)
+	_ = viper.WriteConfigAs(ConfigFile())
+}
+
 func ClearCredentials() error {
 	viper.Set(KeyToken, "")
 	viper.Set(KeyEmail, "")

@@ -25,32 +25,34 @@ type PlatformPromptModel struct {
 	inputs    [fieldCount]textinput.Model
 	focused   promptField
 	cancelled bool
-	token     string
+	token     string // set after successful auth
 	err       string
 }
 
-func NewPlatformPromptModel(existingToken string) PlatformPromptModel {
-	labels := []string{"Platform URL", "Email", "Password", "System Key"}
+func NewPlatformPromptModel(prefillURL, prefillSystemKey string) PlatformPromptModel {
 	placeholders := []string{"https://platform.clearblade.com", "you@example.com", "", "abc123..."}
+	prefills := []string{prefillURL, "", "", prefillSystemKey}
 
 	var inputs [fieldCount]textinput.Model
 	for i := range inputs {
 		t := textinput.New()
 		t.Placeholder = placeholders[i]
 		t.CharLimit = 256
+		t.SetValue(prefills[i])
 		if promptField(i) == fieldPassword {
 			t.EchoMode = textinput.EchoPassword
 			t.EchoCharacter = '•'
 		}
-		_ = labels[i]
 		inputs[i] = t
 	}
 	inputs[fieldPlatformURL].Focus()
 
-	return PlatformPromptModel{
-		inputs: inputs,
-		token:  existingToken,
-	}
+	return PlatformPromptModel{inputs: inputs}
+}
+
+// NewPlatformPromptModelEmpty shows a fully empty prompt with no pre-fills.
+func NewPlatformPromptModelEmpty() PlatformPromptModel {
+	return NewPlatformPromptModel("", "")
 }
 
 func (m PlatformPromptModel) Init() tea.Cmd {

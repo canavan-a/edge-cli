@@ -15,12 +15,13 @@ import (
 )
 
 type EdgePickerModel struct {
-	client    *client.Client
-	list      list.Model
-	spinner   spinner.Model
-	loading   bool
-	cancelled bool
-	selected  string
+	client        *client.Client
+	list          list.Model
+	spinner       spinner.Model
+	loading       bool
+	cancelled     bool
+	selected      string
+	selectedToken string
 }
 
 type edgeItem struct{ edge models.EdgeInfo }
@@ -128,6 +129,7 @@ func (m EdgePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.loading {
 				if i, ok := m.list.SelectedItem().(edgeItem); ok {
 					m.selected = i.edge.Name
+					m.selectedToken = i.edge.Token
 					return m, tea.Quit
 				}
 			}
@@ -181,5 +183,6 @@ func fetchEdges(c *client.Client) tea.Cmd {
 	}
 }
 
-func (m EdgePickerModel) Cancelled() bool      { return m.cancelled }
-func (m EdgePickerModel) SelectedEdge() string { return m.selected }
+func (m EdgePickerModel) Cancelled() bool           { return m.cancelled }
+func (m EdgePickerModel) SelectedEdge() string      { return m.selected }
+func (m EdgePickerModel) SelectedEdgeToken() string { return m.selectedToken }

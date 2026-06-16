@@ -53,6 +53,12 @@ func RunProxy(platformURL, token, systemKey string) error {
 	}
 
 	edgeName := pm.SelectedEdge()
-	proxyClient := client.NewProxy(platformURL, token, systemKey, edgeName)
+	edgeToken := pm.SelectedEdgeToken()
+	// Use the edge's own token for proxied requests — the platform dev token
+	// is not recognised by the edge's local auth.
+	if edgeToken == "" {
+		edgeToken = token
+	}
+	proxyClient := client.NewProxy(platformURL, edgeToken, systemKey, edgeName)
 	return Run(proxyClient)
 }

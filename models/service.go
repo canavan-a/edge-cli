@@ -62,6 +62,7 @@ type LegacyLogUnit struct {
 type EdgeInfo struct {
 	Name                 string `json:"name"`
 	Description          string `json:"description"`
+	Token                string `json:"token"` // edge's own dev token — used for proxy auth
 	PublicAddr           string `json:"public_addr"`
 	LocalAddr            string `json:"local_addr"`
 	LastSeenVersion      string `json:"last_seen_version"`
